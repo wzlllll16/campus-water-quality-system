@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}<h2>统计分析</h2>
+<div class="cards"><div class="stat">监测总数<br><b>{{ total_m }}</b></div><div class="stat">超标次数<br><b class="red">{{ exceed }}</b></div><div class="stat">超标率<br><b>{{ exceed_rate }}%</b></div><div class="stat">巡检完成率<br><b>{{ task_rate }}%</b>（{{ tasks_done }}/{{ tasks_total }}）</div><div class="stat">设备故障/维修次数<br><b>{{ faults }}</b></div></div>
+<h3>按点位统计</h3><table><tr><th>点位</th><th>监测数</th><th>pH均值</th><th>溶解氧均值</th><th>浑浊度均值</th><th>氨氮均值</th><th>超标次数</th></tr>{% for r in point_stats %}<tr><td>{{ r['point_name'] }}</td><td>{{ r['total'] }}</td><td>{{ r['avg_ph'] }}</td><td>{{ r['avg_do'] }}</td><td>{{ r['avg_turbidity'] }}</td><td>{{ r['avg_ammonia'] }}</td><td>{{ r['exceed_count'] }}</td></tr>{% endfor %}</table>
+<h3>异常按状态</h3><ul>{% for a in anoms %}<li>{{ a['status'] }}：{{ a['c'] }} 条</li>{% endfor %}</ul>
+<a class="btn" href="{{ url_for('stats_export') }}">导出统计报表CSV</a>{% endblock %}

@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}<h2>监测点位台账</h2>
+<form method="get" class="filter"><input name="q" placeholder="搜索名称/编号/位置" value="{{ q }}"><button>搜索</button>{% if current_role=='admin' %} <a class="btn" href="{{ url_for('point_add') }}">新增点位</a>{% endif %}</form>
+<table><tr><th>编号</th><th>名称</th><th>类型</th><th>位置</th><th>负责人</th><th>状态</th><th>归档</th><th>操作</th></tr>
+{% for p in points %}<tr><td>{{ p['code'] }}</td><td>{{ p['name'] }}</td><td>{{ p['type'] }}</td><td>{{ p['location'] }}</td><td>{{ p['manager'] }}</td><td>{{ p['status'] }}</td><td>{{ '已归档' if p['archived'] else '未归档' }}</td><td>{% if current_role=='admin' %}<a href="{{ url_for('point_edit', pid=p['id']) }}">编辑</a> <form style="display:inline" method="post" action="{{ url_for('point_archive', pid=p['id']) }}"><button>归档</button></form>{% else %}—{% endif %}</td></tr>{% endfor %}</table>{% endblock %}

@@ -1,0 +1,19 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}校园水质生态监测与巡检管护管理系统{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><header><h1>🌊 校园水质生态监测与巡检管护管理系统</h1>
+{% if current_user %}<div class="userbar">{{ current_user }}（{{ role_names.get(current_role,'') }}）| <a href="{{ url_for('change_password') }}">改密码</a> | <a href="{{ url_for('logout') }}">退出</a></div>{% endif %}</header>
+{% if current_user %}<nav>
+<a href="{{ url_for('dashboard') }}">工作台</a>
+<a href="{{ url_for('points') }}">点位台账</a>
+<a href="{{ url_for('measurements') }}">监测数据</a>
+<a href="{{ url_for('tasks') }}">巡检任务</a>
+<a href="{{ url_for('anomalies') }}">异常审批</a>
+<a href="{{ url_for('devices') }}">设备运维</a>
+<a href="{{ url_for('stats') }}">统计报表</a>
+<a href="{{ url_for('archives') }}">档案管理</a>
+{% if current_role=='admin' %}<a href="{{ url_for('users') }}">账号管理</a><a href="{{ url_for('logs') }}">系统日志</a>{% endif %}
+</nav>{% endif %}
+<main>{% with msgs=get_flashed_messages() %}{% if msgs %}<div class="flash">{% for m in msgs %}<p>{{ m }}</p>{% endfor %}</div>{% endif %}{% endwith %}
+{% block content %}{% endblock %}</main>
+<footer>2024网络工程 WEB网络编程期末项目 · wd小组 · 仅供校内后勤人员使用</footer></body></html>

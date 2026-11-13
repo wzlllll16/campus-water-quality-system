@@ -1,0 +1,1 @@
+{% extends "base.html" %}{% block content %}<h2>系统日志</h2><table><tr><th>时间</th><th>用户</th><th>操作</th><th>详情</th></tr>{% for l in logs %}<tr><td>{{ l['created_at'] }}</td><td>{{ l['username'] }}</td><td>{{ l['action'] }}</td><td>{{ l['detail'] }}</td></tr>{% endfor %}</table>{% endblock %}

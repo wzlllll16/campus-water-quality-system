@@ -1,0 +1,1 @@
+{% extends "base.html" %}{% block content %}<h2>登记巡检结果：{{ task['title'] }}</h2><form method="post" class="form"><label>巡检时间 <input type="date" name="inspect_time"></label><label>巡检结果 / 现场情况 <input name="result" required></label><button>标记已完成</button></form>{% endblock %}

@@ -1,0 +1,3 @@
+{% extends "base.html" %}{% block content %}<h2>设备运维台账</h2>{% if due %}<div class="warn">⚠ 7天内需维保：{{ due|join('、') }}</div>{% endif %}{% if current_role=='admin' %}<a class="btn" href="{{ url_for('device_add') }}">登记设备</a>{% endif %}
+<table><tr><th>编号</th><th>名称</th><th>类型</th><th>点位</th><th>安装日期</th><th>下次维保</th><th>状态</th><th>操作</th></tr>
+{% for d in devices %}<tr><td>{{ d['code'] }}</td><td>{{ d['name'] }}</td><td>{{ d['type'] }}</td><td>{{ d['point_name'] or '' }}</td><td>{{ d['install_date'] }}</td><td class="{{ 'red' if d['next_maintenance_date']|string <= today else '' }}">{{ d['next_maintenance_date'] }}</td><td>{{ d['status'] }}</td><td><a href="{{ url_for('device_maintain', did=d['id']) }}">维保记录</a></td></tr>{% endfor %}</table>{% endblock %}

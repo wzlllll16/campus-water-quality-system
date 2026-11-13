@@ -1,0 +1,3 @@
+{% extends "base.html" %}{% block content %}<div class="card login"><h2>登录</h2><p class="muted">仅面向后勤管理人员，不开放自主注册，由管理员统一创建账号。</p>
+<form method="post"><label>用户名 <input name="username" required></label><label>密码 <input type="password" name="password" required></label><button type="submit">登录</button></form>
+<p class="muted">测试账号：admin / admin123（系统管理员）　inspector1 / 123456（巡检员）　reviewer / 123456（审核员）</p></div>{% endblock %}
