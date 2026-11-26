@@ -1,15 +1,15 @@
 -- 演示数据：5账号 / 6点位 / 10监测 / 6任务 / 5异常 / 6设备 / 4维保
--- 密码哈希与原来一致（werkzeug scrypt）：admin123、123456
--- 账号：admin/admin123、inspector1/123456、inspector2/123456、reviewer/123456、admin2/123456
+-- 密码为显式加盐 PBKDF2-HMAC-SHA256（100000 次）哈希：每账号独立随机盐，
+-- 同一密码哈希也不同。测试账号见 README（admin/admin123，其余 123456）。
 -- 仅在 users 为空时由 init_db.py 执行，避免重复写入
 USE campus_water;
 
-INSERT INTO users (username, password_hash, real_name, role, status) VALUES
-('admin', 'scrypt:32768:8:1$LQsNrnjP6LgQO7Tm$db7060329e6219023f98de077b2350c92c5ad210c236206d82125239b5ce3a4889f1c9a226ef5712a7fda254b415a2eeb32889aa4a72484f0656d46b9e954fc6', 'wd', 'admin', 'active'),
-('inspector1', 'scrypt:32768:8:1$L55QPxovaODwPzie$bfbbca65d22887f7199a287cb84f72d82c9288fa4ce58deae0205e971cbf239a3977b48d00e86b73d3b486128ccd1e942c746496a24c1196995dd7c1b0d4d92c', 'wzl', 'inspector', 'active'),
-('inspector2', 'scrypt:32768:8:1$L55QPxovaODwPzie$bfbbca65d22887f7199a287cb84f72d82c9288fa4ce58deae0205e971cbf239a3977b48d00e86b73d3b486128ccd1e942c746496a24c1196995dd7c1b0d4d92c', 'lyz', 'inspector', 'active'),
-('reviewer', 'scrypt:32768:8:1$L55QPxovaODwPzie$bfbbca65d22887f7199a287cb84f72d82c9288fa4ce58deae0205e971cbf239a3977b48d00e86b73d3b486128ccd1e942c746496a24c1196995dd7c1b0d4d92c', '审核员', 'reviewer', 'active'),
-('admin2', 'scrypt:32768:8:1$L55QPxovaODwPzie$bfbbca65d22887f7199a287cb84f72d82c9288fa4ce58deae0205e971cbf239a3977b48d00e86b73d3b486128ccd1e942c746496a24c1196995dd7c1b0d4d92c', '管理员', 'admin', 'active');
+INSERT INTO users (username, salt, password_hash, real_name, role, status) VALUES
+('admin', '567262a6f5ca19751d43c5557122a99a', '985afe03da9f4d1745e729d4dbaaeed633e9a26cf89048ba297ca1c5f4a19a01', 'wd', 'admin', 'active'),
+('inspector1', '6d003281eebf6ccbf836ea4ca93b80c2', '60ce3e358671d98a6930c2853b8b69f70ab484e1aa579ac4d2ce857454237cb5', 'wzl', 'inspector', 'active'),
+('inspector2', '257fdec77c2cf65bf33cb7584247cb4f', '2d7b0d76d584da391b9df7b39932227de09ea193b239523e04de71d868e09f42', 'lyz', 'inspector', 'active'),
+('reviewer', 'dd06b948575f0175538fa7082c6ac427', '5dbb8fcf269452185d5966c517a535c7c7a4b0e96ee6b7c2a3759bd65b1414f9', '审核员', 'reviewer', 'active'),
+('admin2', 'afa1dae20f8597244be9cacecd7a325a', '4c91fa8e7d41f50fe5679dc33deab266540935dc391f6030e556cb05e1c0ee86', '管理员', 'admin', 'active');
 
 INSERT INTO monitoring_points (code, name, type, location, manager, status) VALUES
 ('JD001', '明德湖', '湖泊', '校园东区明德湖', 'wzl', '启用'),

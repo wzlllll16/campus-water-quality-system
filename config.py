@@ -14,3 +14,7 @@ DB_CHARSET = "utf8mb4"
 
 # Flask 会话密钥（演示用，正式使用请改成随机字符串）
 SECRET_KEY = "campus-water-quality-2024"
+
+# 登录验证码
+CAPTCHA_LENGTH = 5          # 验证码位数
+CAPTCHA_EXPIRE_SECONDS = 300  # 验证码有效期（秒），过期需重新获取

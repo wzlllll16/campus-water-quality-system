@@ -1,19 +1,19 @@
 """
 校园水质生态监测与巡检管护管理系统
 2024网络工程 WEB网络编程期末项目 | wd小组
-wd （数据库） wzl （前端） lyz （后端）
+wd（数据库） wzl（前端） lyz（后端）
 运行：pip install -r requirements.txt && python init_db.py && python app.py
 数据库：MySQL 5.5 / 8（库 campus_water），配置见 config.py
 访问：http://127.0.0.1:5000  测试账号 admin/admin123
 """
-import csv, io
+import csv, hashlib, io, random, secrets, time
 import pymysql
 import pymysql.cursors
 import config
 from datetime import date, timedelta, datetime
 from functools import wraps
 from flask import Flask, g, render_template, request, redirect, url_for, session, flash, Response
-from werkzeug.security import generate_password_hash, check_password_hash
+from PIL import Image, ImageDraw, ImageFont
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -60,6 +60,84 @@ def close_db(exc=None):
 
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# ---------- 显式加盐密码 ----------
+# 不用盐藏在哈希串里看不见的哈希函数，改用标准库 hashlib
+# 显式存盐：salt = 16 字节随机盐的 hex（32 位），hash = PBKDF2-HMAC-SHA256 100000 次的 hex。
+def hash_password(password):
+    """生成新盐并哈希，返回 (salt, hash)。新建账号、改密码时调用，每次重新生成新盐。"""
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 100000).hex()
+    return salt, h
+
+def verify_password(password, salt, stored_hash):
+    """用存储的盐重新计算哈希并与 stored_hash 比较。盐缺失/格式错误时返回 False。"""
+    if not salt or not stored_hash:
+        return False
+    try:
+        h = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 100000).hex()
+    except (ValueError, TypeError):
+        return False
+    return secrets.compare_digest(h, stored_hash)
+
+# ---------- 登录验证码 ----------
+# 字符集去掉易混淆的 0/O/1/I/l，只剩 32 个字符
+CAPTCHA_CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+def generate_captcha_code(length=None):
+    return "".join(random.choice(CAPTCHA_CHARS) for _ in range(length or config.CAPTCHA_LENGTH))
+
+def _captcha_image(code):
+    """画 150x50 PNG：白底，每字符随机颜色/位置/轻微旋转，加干扰线和噪点。
+    用 ImageFont.load_default()，不依赖系统字体文件。"""
+    width, height = 150, 50
+    img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+    # 干扰线
+    for _ in range(4):
+        x1, y1 = random.randint(0, width), random.randint(0, height)
+        x2, y2 = random.randint(0, width), random.randint(0, height)
+        draw.line([(x1, y1), (x2, y2)], fill=(random.randint(150, 220), random.randint(150, 220), random.randint(150, 220)), width=1)
+    # 噪点
+    for _ in range(80):
+        draw.point((random.randint(0, width - 1), random.randint(0, height - 1)),
+                   fill=(random.randint(150, 230), random.randint(150, 230), random.randint(150, 230)))
+    # 字符：逐个画在独立小图上再旋转粘贴，保证轻微旋转不互相覆盖
+    slot = width // len(code)
+    for i, ch in enumerate(code):
+        color = (random.randint(0, 120), random.randint(0, 120), random.randint(0, 120))
+        char_img = Image.new("RGBA", (30, 40), (0, 0, 0, 0))
+        char_draw = ImageDraw.Draw(char_img)
+        char_draw.text((8, 8), ch, font=font, fill=color + (255,))
+        char_img = char_img.rotate(random.randint(-18, 18), resample=Image.BICUBIC, expand=False)
+        img.paste(char_img, (i * slot + random.randint(0, 6), random.randint(4, 10)), char_img)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+@app.route("/captcha.png", methods=["GET"])
+def captcha_png():
+    code = generate_captcha_code()
+    session["captcha_code"] = code
+    session["captcha_expires"] = time.time() + config.CAPTCHA_EXPIRE_SECONDS
+    return Response(_captcha_image(code), mimetype="image/png",
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                             "Pragma": "no-cache", "Expires": "0"})
+
+def _check_captcha():
+    """校验登录验证码：必填、不区分大小写、一次有效、300 秒过期。
+    无论成功失败，用过就清空。返回 (ok, 错误提示或 None)。"""
+    code = (request.form.get("captcha") or "").strip().upper()
+    stored = session.pop("captcha_code", None)
+    expires = session.pop("captcha_expires", None)
+    if not code or not stored:
+        return False, "验证码错误/已过期，请重新输入"
+    if expires is not None and time.time() > float(expires):
+        return False, "验证码错误/已过期，请重新输入"
+    if code != stored.upper():
+        return False, "验证码错误/已过期，请重新输入"
+    return True, None
 
 def check_threshold(ph, do, turbidity, ammonia):
     """阈值：pH 6.5-8.5、溶解氧>=5、浑浊度<=10、氨氮<=0.5，任一项不满足即超标"""
@@ -121,9 +199,13 @@ def index():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
+        ok, err = _check_captcha()
+        if not ok:
+            flash(err)
+            return render_template("login.html")
         db = get_db()
         u = db.execute("SELECT * FROM users WHERE username=%s", (request.form["username"],)).fetchone()
-        if u and check_password_hash(u["password_hash"], request.form["password"]):
+        if u and verify_password(request.form["password"], u.get("salt"), u["password_hash"]):
             if u["status"] != "active":
                 flash("账号已被停用，请联系管理员")
                 return render_template("login.html")
@@ -146,12 +228,13 @@ def change_password():
     if request.method == "POST":
         db = get_db()
         u = db.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
-        if not check_password_hash(u["password_hash"], request.form["old_password"]):
+        if not verify_password(request.form["old_password"], u.get("salt"), u["password_hash"]):
             flash("原密码错误")
         elif request.form["new_password"] != request.form["confirm_password"] or not request.form["new_password"]:
             flash("两次新密码不一致或为空")
         else:
-            db.execute("UPDATE users SET password_hash=%s WHERE id=%s", (generate_password_hash(request.form["new_password"]), session["user_id"]))
+            salt, pw_hash = hash_password(request.form["new_password"])
+            db.execute("UPDATE users SET salt=%s, password_hash=%s WHERE id=%s", (salt, pw_hash, session["user_id"]))
             db.commit(); log_action(session["username"], "修改密码", "")
             flash("密码修改成功"); return redirect(url_for("dashboard"))
     return render_template("change_password.html")
@@ -476,8 +559,9 @@ def user_add():
     if request.method == "POST":
         db = get_db()
         try:
-            db.execute("INSERT INTO users(username,password_hash,real_name,role,status,created_at) VALUES(%s,%s,%s,%s, 'active', %s)",
-                       (request.form["username"], generate_password_hash(request.form["password"]), request.form["real_name"], request.form["role"], now()))
+            salt, pw_hash = hash_password(request.form["password"])
+            db.execute("INSERT INTO users(username,salt,password_hash,real_name,role,status,created_at) VALUES(%s,%s,%s,%s,%s, 'active', %s)",
+                       (request.form["username"], salt, pw_hash, request.form["real_name"], request.form["role"], now()))
             db.commit(); log_action(session["username"], "创建账号", request.form["username"])
         except pymysql.err.IntegrityError:
             flash("用户名已存在")

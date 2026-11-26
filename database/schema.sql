@@ -11,7 +11,8 @@ USE campus_water;
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(128) NOT NULL COMMENT 'PBKDF2-HMAC-SHA256 哈希，64 位 hex',
+    salt CHAR(32) NOT NULL COMMENT '每用户随机 16 字节盐的 hex，每次改密码重新生成',
     real_name VARCHAR(50) NOT NULL,
     role ENUM('admin','inspector','reviewer') NOT NULL COMMENT 'admin=系统管理员, inspector=巡检员, reviewer=审核员',
     status ENUM('active','disabled') NOT NULL DEFAULT 'active',

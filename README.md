@@ -26,16 +26,18 @@ B/S 架构，Python 3 + Flask + **MySQL 5.5 / 8**（PyMySQL 连接），无 npm�
    cd /d D:\campus-water-quality-local
    ```
 4. **改数据库密码**：打开 `config.py`，把 `DB_PASSWORD = "123456"` 改成你安装 MySQL / phpStudy 里登录 MySQL 用的那个 root 密码；如果 root 没有密码，改为 `""`。其他配置一般不用改：`DB_HOST=127.0.0.1`、`DB_PORT=3306`、`DB_USER=root`、`DB_NAME=campus_water`。phpStudy 的 MySQL 默认端口一般也是 3306，如果你改过端口，`DB_PORT` 也要跟着改。
-5. 安装依赖：
+5. 安装依赖（包含登录验证码用的 Pillow）：
    ```bat
    pip install -r requirements.txt
    ```
    若 pip 很慢，可用：`pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple`
+   依赖：Flask 3.1.2、PyMySQL 1.1.1、Pillow 11.3.0。
 6. **初始化数据库**（一键建库、建表、写演示数据、建视图和触发器）：
    ```bat
    python init_db.py
    ```
    成功会显示“初始化完成”。可重复运行，已有演示数据不会重复写入。
+   > **旧版升级注意**：已跑过旧版（无 salt 列、无验证码）的用户，先在 MySQL 里执行 `DROP DATABASE campus_water;` 再跑 `python init_db.py`，得到干净的新库。如果不想删库直接跑也可以：`init_db.py` 会自动给 `users` 表补 `salt` 列，并把 5 个演示账号的旧哈希按新加盐算法重写，但其他自己建的账号若还是旧哈希则无法自动转换，需管理员重置密码。
 7. 启动：
    ```bat
    python app.py
@@ -49,7 +51,7 @@ Mac / Linux：`bash run.sh`，或依次执行 `pip3 install -r requirements.txt`
 ## 测试账号（初始化时自动写入）
 
 | 用户名 | 密码 | 角色 |
-|---|---|
+|---|---|---|
 | admin | admin123 | 系统管理员 |
 | inspector1 | 123456 | 巡检员 |
 | inspector2 | 123456 | 巡检员 |
@@ -80,7 +82,7 @@ Mac / Linux：`bash run.sh`，或依次执行 `pip3 install -r requirements.txt`
 - 9 张表：`users`、`monitoring_points`、`measurements`、`inspection_tasks`、`anomalies`、`devices`、`maintenance_logs`、`archives`、`system_logs`，含主键、外键、索引、AUTO_INCREMENT，见 `database/schema.sql`。
 - 3 个视图：`v_point_stats`（点位指标统计）、`v_task_completion`（巡检完成率）、`v_anomaly_stats`（异常处理统计），见 `database/views.sql`。
 - 1 个触发器：`trg_measurement_exceed`，登记监测数据后若判定超标，自动在 `system_logs` 写一条超标提醒；是否转异常仍由巡检员在页面点“一键转异常”决定。
-- 演示数据见 `database/seed.sql`，密码为 werkzeug 哈希，与原来 SQLite 版一致。
+- 演示数据见 `database/seed.sql`，密码为显式加盐 PBKDF2-HMAC-SHA256 哈希（见下节“加盐密码设计”）。
 
 ## 项目结构
 
@@ -88,7 +90,7 @@ Mac / Linux：`bash run.sh`，或依次执行 `pip3 install -r requirements.txt`
 app.py                 # Flask 应用：路由、权限装饰器、阈值判定、日志、统计（PyMySQL，%s 占位符）
 config.py              # 数据库与应用配置（只改这里的 DB_PASSWORD）
 init_db.py             # 一键初始化：建库 -> 建表 -> 演示数据 -> 视图/触发器
-requirements.txt       # Flask + PyMySQL
+requirements.txt       # Flask + PyMySQL + Pillow（登录验证码）
 run.bat / run.sh       # 一键启动脚本
 database/
   schema.sql           # 建库、9 张表
@@ -98,6 +100,30 @@ templates/             # Jinja 模板：base、login、dashboard、points、meas
                        # tasks、anomalies、devices、stats、archives、users、logs 等
 static/style.css       # 全部样式
 ```
+
+## 加盐密码设计
+
+密码不再用隐藏盐的哈希函数，改用标准库 `hashlib` 显式加盐，函数在 `app.py`：
+
+- `hash_password(password) -> (salt, hash)`：`salt = secrets.token_hex(16)`（16 字节随机盐，存为 32 位 hex），`hash = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(salt), 100000).hex()`（64 位 hex）。
+- `verify_password(password, salt, stored_hash)`：用存储的盐按同样算法重算一次哈希，再用 `secrets.compare_digest` 比较；盐缺失或格式错误返回 False。
+- `users` 表：`salt CHAR(32) NOT NULL`，`password_hash VARCHAR(128) NOT NULL`（存 64 位 hex 哈希）。
+
+为什么每个用户单独随机盐：
+
+- **同一密码哈希不同**：5 个演示账号里 inspector1、inspector2、reviewer、admin2 密码都是 123456，但盐各不相同，哈希也各不相同，数据库泄露后看不出哪些账号用了相同密码。
+- **防彩虹表**：攻击者不能用预先算好的常用密码哈希表直接比对，必须针对每个盐单独算，100000 次 PBKDF2 迭代又让每次猜测都很慢。
+- **改密码换新盐**：登录、改密码、管理员新建账号三处都用这两个函数，新建/改密码时重新生成新盐；旧密码的盐和哈希作废。
+
+## 验证码设计
+
+登录页（仅登录页，其他页面不加）有图片验证码，`GET /captcha.png`：
+
+- **生成**：5 位字符（`config.py` 的 `CAPTCHA_LENGTH=5`），字符集去掉易混淆的 0/O/1/I/l，只用 `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`。
+- **图片**：Pillow 画 150×50 PNG，白底，每字符随机颜色/位置/轻微旋转（±18°），加 4 条干扰线和 80 个噪点；用 `ImageFont.load_default()`，不依赖系统字体文件；返回 `image/png` 并加 `no-cache` 头。
+- **存储**：验证码明文存在 Flask session（`session['captcha_code']`），过期时间 `session['captcha_expires']` = 当前时间 + 300 秒（`CAPTCHA_EXPIRE_SECONDS=300`），只存在服务端，不写数据库。
+- **校验**：登录先校验验证码再校验用户名密码；验证码必填、不区分大小写；**一次有效**——无论成功失败，用过就清空 session 里的验证码，同一码第二次登录必然失败；超过 300 秒算过期，提示“验证码错误/已过期，请重新输入”并重新生成。
+- **刷新**：点击验证码图片或“看不清？换一张”重新获取，请求带时间戳参数防缓存。
 
 ## 重置数据
 
